@@ -1,0 +1,275 @@
+---
+title: "Assignment 1, Q6"
+author: "Group 3: Arsh, Axel, Jeremy"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: show
+---
+
+<br>
+
+<details>
+  <summary>Show/Hide Prep Code</summary>
+
+```{r, warning=F, message=F,   results='hide'}
+library(tidyverse)
+library(tidylog)
+library(lubridate)
+
+crashes <- read.csv("data/crashes.csv")
+
+crashes %>% count(INJURIES_FATAL)
+crashes %>% count(INJURIES_INCAPACITATING)
+
+# are the NA rows the same? Yes -- keep as NA for now
+  crashes_serious_na <- crashes %>% filter(is.na(INJURIES_FATAL))
+
+# Count serious injuries
+  crashes$INJURIES_SERIOUS <- crashes$INJURIES_FATAL + crashes$INJURIES_INCAPACITATING
+
+# Aggregate over COMPLETE weeks
+  crashes$CRASH_DATE <- as.Date(crashes$CRASH_DATE)
+  
+  first_day <- min(crashes$CRASH_DATE, na.rm = TRUE)
+  last_day  <- max(crashes$CRASH_DATE, na.rm = TRUE)
+  
+  first_week <- ceiling_date(first_day, "week", week_start = 7,
+                             change_on_boundary = FALSE)               # first Sunday on/after first_day
+  last_week  <- floor_date(last_day + 1, "week", week_start = 7) - 7   # last Sunday whose Saturday is <= last_day
+  
+  weekly <- crashes %>%
+    mutate(WEEK_START = floor_date(CRASH_DATE, "week", week_start = 7)) %>%
+    filter(WEEK_START >= first_week, WEEK_START <= last_week) %>%
+    group_by(WEEK_START) %>%
+    summarise(INJURIES_SERIOUS_WEEKLY = sum(INJURIES_SERIOUS, na.rm = TRUE), # NAs treated as zero, in effect
+              .groups = "drop")
+
+```
+</details>
+
+
+<br>
+
+
+## Reproduce Current Results 
+
+
+#### Helper functions
+
+<br>
+The log-likelihood of the Poisson distribution:
+$$
+\ell(\lambda) = \sum_{i=1}^{n} \left[ x_i \log \lambda - \lambda - \log(x_i!) \right]
+$$
+
+```{r}
+# computationally safe form
+poisson.ll <- function(lambda, x) {
+  sum(x) * log(lambda) - length(x) * lambda - sum(lfactorial(x))
+}
+```
+
+<br>
+
+Derivative of the log-likelihood of the Poisson distribution:
+$$
+\frac{d\ell}{d\lambda} = \frac{\sum_{i=1}^{n} x_i}{\lambda} - n
+$$
+
+```{r}
+poisson.dll <- function(lambda, x) {
+  sum(x) / lambda - length(x)
+}
+```
+
+
+<br>
+
+Second Derivative of the log-likelihood of the Poisson distribution:
+
+$$
+\frac{d^2\ell}{d\lambda^2} = -\frac{\sum_{i=1}^{n} x_i}{\lambda^2}
+$$
+
+```{r}
+poisson.ddll <- function(lambda, x) {
+  - sum(x) / lambda^2
+}
+```
+
+<br>
+
+#### Estimating Poisson Intensity with Newton-Raphson
+
+<br>
+
+Function to implement Newton-Raphson algorithm: 
+```{r}
+# modifications: 
+  # x reassignment changed from plus to minus
+  # while loop tolerance: "<" changed to ">"
+  # function takes data, which is automatically fed into the first and second derivative functions of the poisson log-liklihood
+  # No secant approximations of second derivative
+
+poisson.nr <- function(lambda_0, x, tol=1e-6, max.iter=20){
+  
+  lambda <- lambda_0
+  i <- 0
+  results <- data.frame(iter=i,lambda=lambda, poisson.dll=poisson.dll(lambda, x)) # starting point
+  
+  while (abs(poisson.dll(lambda, x))>tol && i<max.iter) {
+    i <- i + 1
+    lambda <- lambda - poisson.dll(lambda, x) / poisson.ddll(lambda, x)
+    results <- rbind(results,data.frame(iter=i,lambda=lambda, poisson.dll=poisson.dll(lambda, x)))}
+  return(results)}
+```
+
+<br>
+
+Run the algorithm: 
+```{r}
+poisson.nr(50, weekly$INJURIES_SERIOUS_WEEKLY)
+```
+
+```{r}
+mean(weekly$INJURIES_SERIOUS_WEEKLY) # sanity check
+```
+
+<br>
+
+#### Replicate Results with Gradient Descent algorithm
+
+```{r}
+poisson.gd <- function(lambda_0, x, b=0.5, tol=1e-6, max.iter=40){
+  i <- 0
+  lambda <- lambda_0
+  results <- data.frame(iter=i, lambda=lambda, poisson.ll=poisson.ll(lambda, x)) # starting point
+
+  while (abs(poisson.dll(lambda, x))>tol & i<max.iter) {
+    i <- i + 1
+    t <- 1
+    
+    while ((poisson.ll(lambda + t*poisson.dll(lambda, x), x)) < poisson.ll(lambda, x) & t>tol) {
+      t <- t*b
+    }
+    
+    lambda <- lambda + t*poisson.dll(lambda, x)                                           
+    results <- rbind(results,data.frame(iter=i,lambda=lambda, poisson.ll=poisson.ll(lambda, x)))
+  }
+  
+  return(results)
+}
+
+poisson.gd(50, weekly$INJURIES_SERIOUS_WEEKLY) %>% tail(5)
+```
+
+
+<br>
+
+## Modeling Crash Data with Negative Binomial Distribution
+
+<br>
+
+##### Find Parameters with Gradient Descent
+
+<br>
+
+Gradient descent struggles to find MLEs for $(r, p)$ parametrization. Instead, we use Claude Sonnet 5.5 to model this with $(r, μ)$ paramaterization, then back so we can compare with Q2. 
+
+<br>
+
+<details>
+  <summary>Show/Hide Equations</summary>
+
+In this parametrization the pmf is
+$$P(X = k) = \frac{\Gamma(k + r)}{\Gamma(r)\,k!}\left(\frac{r}{r+\mu}\right)^{r}\left(\frac{\mu}{r+\mu}\right)^{k},$$
+and the log-likelihood for counts $x_1, \dots, x_n$ is
+$$\ell(r, \mu) = \sum_{i=1}^{n} \log\Gamma(x_i + r) - n\log\Gamma(r) - \sum_{i=1}^{n}\log(x_i!) + n r \log\frac{r}{r+\mu} + \left(\sum_{i=1}^{n} x_i\right)\log\frac{\mu}{r+\mu}.$$
+<br>
+
+Differentiating gives
+$$\frac{\partial \ell}{\partial r} = \sum_{i=1}^{n}\psi(x_i + r) - n\,\psi(r) + n\left[\log\frac{r}{r+\mu} + 1\right] - \frac{n r + \sum_{i=1}^{n} x_i}{r + \mu},$$
+$$\frac{\partial \ell}{\partial \mu} = \frac{\sum_{i=1}^{n} x_i}{\mu} - \frac{\sum_{i=1}^{n} x_i + n r}{r + \mu},$$
+where $\psi$ is the digamma function. Setting $\partial \ell / \partial \mu = 0$ gives $\hat{\mu} = \bar{x}$ for any $r$, so $\mu$ is decoupled from $r$, which is why this parametrization is well conditioned.
+
+Because we optimize over $\theta = (\log r, \log \mu)$, the chain rule gives
+$$\frac{\partial \ell}{\partial \log r} = r\,\frac{\partial \ell}{\partial r}, \qquad \frac{\partial \ell}{\partial \log \mu} = \mu\,\frac{\partial \ell}{\partial \mu}.$$
+In the code, $\ell$ and its gradient are divided by $n$ (the per-observation scale) so the course's step-size rule behaves.
+
+After convergence, we recover the original parameters:
+$$\hat{r} = e^{\hat\theta_1}, \qquad \hat{\mu} = e^{\hat\theta_2}, \qquad \hat{p} = \frac{\hat r}{\hat r + \hat \mu}.$$
+</details>
+
+<br>
+
+```{r}
+x_data <- weekly$INJURIES_SERIOUS_WEEKLY
+n  <- length(x_data)
+sx <- sum(x_data)
+
+# Log-likelihood per observation. theta = c(log r, log mu)
+  nb.ll.mu <- function(theta) {
+    r <- exp(theta[1]); mu <- exp(theta[2])
+    (sum(lgamma(x_data + r)) - n * lgamma(r) - sum(lfactorial(x_data)) +
+       n * r * log(r / (r + mu)) + sx * log(mu / (r + mu))) / n
+  }
+
+# Gradient with respect to theta = c(log r, log mu), per observation
+  nb.grad.mu <- function(theta) {
+    r <- exp(theta[1]); mu <- exp(theta[2])
+    d_r  <- sum(digamma(x_data + r)) - n * digamma(r) +
+              n * (log(r / (r + mu)) + 1) - (n * r + sx) / (r + mu)
+    d_mu <- sx / mu - (sx + n * r) / (r + mu)
+    c(r * d_r, mu * d_mu) / n          # chain rule for the logs, then per observation
+  }
+
+# Gradient descent with backtracking line search
+  graddesc <- function(f, g, x0, b=0.8, tol=1e-2, max.iter=40){
+    i <- 0
+    x <- x0
+    results <- t(c(0,x,-f(x)))
+    while (sqrt(g(x)%*%g(x))>tol & i<max.iter) {
+      i <- i + 1
+      t <- 1
+      while ((f(x+t*g(x))<f(x)) & t>tol) {
+        t <- t*b}
+      x <- x + t*g(x)
+      results <- rbind(results,t(c(i,x,-f(x))))}
+    colnames(results) <- c('iter',paste0('x',1:length(x)),'f')
+    return(results)}
+
+# Method-of-moments starting values
+  m <- mean(x_data); v <- var(x_data)
+  x0 <- c(log(m^2 / (v - m)), log(m))
+
+# Run it
+  out <- graddesc(nb.ll.mu, nb.grad.mu, x0, tol = 1e-4, max.iter = 1000)
+  tail(out, 3)
+
+# Transform back to the (r, p) parameterization
+  theta_hat <- out[nrow(out), c("x1", "x2")]
+  r_hat  <- exp(theta_hat[["x1"]])
+  mu_hat <- exp(theta_hat[["x2"]])
+  p_hat  <- r_hat / (r_hat + mu_hat)
+  c(r = r_hat, p = p_hat, mu = mu_hat)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
