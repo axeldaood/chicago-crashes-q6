@@ -1,6 +1,6 @@
 ---
-title: "Assignment 1, Q6"
-author: "Group 3: Arsh, Axel, Jeremy"
+title: "Request 6: Code "
+author: "Arsh, Axel, Jeremy"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -175,7 +175,7 @@ poisson.gd(50, weekly$INJURIES_SERIOUS_WEEKLY) %>% tail(5)
 
 <br>
 
-Gradient descent struggles to find MLEs for $(r, p)$ parametrization. Instead, we use Claude Sonnet 5.5 to model this with $(r, μ)$ paramaterization, then back so we can compare with Q2. 
+Gradient descent struggles to find MLEs for $(r, p)$ parametrization. Instead, we model this with $(r, μ)$ paramaterization, then reparameterize to $(r, p)$ for comparison with prior requests. 
 
 <br>
 
@@ -244,7 +244,7 @@ sx <- sum(x_data)
   x0 <- c(log(m^2 / (v - m)), log(m))
 
 # Run it
-  out <- graddesc(nb.ll.mu, nb.grad.mu, x0, tol = 1e-4, max.iter = 1000)
+  out <- graddesc(nb.ll.mu, nb.grad.mu, x0, tol = 1e-6, max.iter = 1000)
   tail(out, 3)
 
 # Transform back to the (r, p) parameterization

@@ -9,11 +9,11 @@
 <meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
 
 
-<meta name="author" content="Group 3: Arsh, Axel, Jeremy" />
+<meta name="author" content="Arsh, Axel, Jeremy" />
 
 <meta name="date" content="2026-10-15" />
 
-<title>Assignment 1, Q6</title>
+<title>Request 6: Code</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -438,8 +438,8 @@ display: none;
 
 
 
-<h1 class="title toc-ignore">Assignment 1, Q6</h1>
-<h4 class="author">Group 3: Arsh, Axel, Jeremy</h4>
+<h1 class="title toc-ignore">Request 6: Code</h1>
+<h4 class="author">Arsh, Axel, Jeremy</h4>
 <h4 class="date">2026-10-15</h4>
 
 </div>
@@ -584,9 +584,10 @@ poisson.gd(50, weekly$INJURIES_SERIOUS_WEEKLY) %&gt;% tail(5)</code></pre>
 <div id="find-parameters-with-gradient-descent" class="section level5">
 <h5>Find Parameters with Gradient Descent</h5>
 <p><br></p>
-<p>Gradient descent struggles to find MLEs for <span class="math inline">\((r, p)\)</span> parametrization. Instead, we use
-Claude Sonnet 5.5 to model this with <span class="math inline">\((r,
-μ)\)</span> paramaterization, then back so we can compare with Q2.</p>
+<p>Gradient descent struggles to find MLEs for <span class="math inline">\((r, p)\)</span> parametrization. Instead, we model
+this with <span class="math inline">\((r, μ)\)</span> paramaterization,
+then reparameterize to <span class="math inline">\((r, p)\)</span> for
+comparison with prior requests.</p>
 <p><br></p>
 <details>
 <summary>
@@ -662,12 +663,12 @@ sx &lt;- sum(x_data)
   x0 &lt;- c(log(m^2 / (v - m)), log(m))
 
 # Run it
-  out &lt;- graddesc(nb.ll.mu, nb.grad.mu, x0, tol = 1e-4, max.iter = 1000)
+  out &lt;- graddesc(nb.ll.mu, nb.grad.mu, x0, tol = 1e-6, max.iter = 1000)
   tail(out, 3)</code></pre>
-<pre><code>##       iter       x1      x2        f
-## [17,]   16 3.141510 3.84769 3.884805
-## [18,]   17 3.141360 3.84769 3.884805
-## [19,]   18 3.141244 3.84769 3.884805</code></pre>
+<pre><code>##        iter       x1       x2        f
+## [167,]  166 3.140831 3.847689 3.884805
+## [168,]  167 3.140831 3.847690 3.884805
+## [169,]  168 3.140831 3.847690 3.884805</code></pre>
 <pre class="r"><code># Transform back to the (r, p) parameterization
   theta_hat &lt;- out[nrow(out), c(&quot;x1&quot;, &quot;x2&quot;)]
   r_hat  &lt;- exp(theta_hat[[&quot;x1&quot;]])
@@ -675,7 +676,7 @@ sx &lt;- sum(x_data)
   p_hat  &lt;- r_hat / (r_hat + mu_hat)
   c(r = r_hat, p = p_hat, mu = mu_hat)</code></pre>
 <pre><code>##          r          p         mu 
-## 23.1326156  0.3303846 46.8846154</code></pre>
+## 23.1230745  0.3302934 46.8846139</code></pre>
 </div>
 </div>
 
